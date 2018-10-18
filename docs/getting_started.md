@@ -1,15 +1,38 @@
 # Getting started
 
-Thanos provides a global query view, data backup, and historical data access as its core features in a single binary. All three features can be run independently of each other. This allows you to have a subset of Thanos features ready for immediate benefit or testing, while also making it flexible for gradual roll outs in more complex environments. 
+Thanos provides a global query view, historical data access and alerting as
+its core features in a single binary. All three features can be run
+independently of each other. This allows you to have a subset of Thanos
+features ready for immediate benefit or testing, while also making it flexible
+for gradual roll outs in more complex environments.
 
-In this quick-start guide, we will configure Thanos and all components mentioned to work against a Google Cloud Storage bucket. 
-At the moment, Thanos is able to use [GCS and S3 as storage providers](storage.md), with the ability to add more providers as necessary. You can substitute Google Cloud specific flags in this guide with those of your object store detailed in the [Storage document](storage.md).
+Thanos has the following components:
 
-## Requirements
+```
+sidecar    - sidecar for Prometheus server: entrypoint for querying data and uploading blocks
+             to a block storage (s3, gcs).
+store      - store node giving access to blocks in a bucket provider.
+query      - query node exposing PromQL enabled Query API with data retrieved from multiple
+             store or sidecar nodes.
+rule       - ruler evaluating Prometheus rules against given query nodes.
+compact    - a component to continuously compacts blocks in an object store bucket.
+bucket     - a component to manually handle and fix storage issues.
+downsample - a component to continuously downsample blocks in an object store bucket,
+             allowing for longer retention periods without losing query performance.
+```
 
-* One or more [Prometheus](https://prometheus.io) v2.2.1+ installations
-* golang 1.10+
-* An object storage bucket (optional)
+These components can be set up with different levels of complexities:
+
+1. [Basic Setup](#basic-setup) - allows you to query against multiple Prometheus, without long term retention.
+2. [Long term retention](#long-term-retention) - allows you the same as the basic setup, but introduces block storage to increase your retention arbitrately.
+3. [Alerting](#alerting) - allows you to alert against data from multiple Prometheus.
+
+## Basic Setup
+
+Requirements: a
+
+On the basic setup we'll configure Thanos query to query against two Prometheus.
+
 
 ## Get Thanos!
 
@@ -28,7 +51,7 @@ The `thanos` binary should now be in your `$PATH` and is the only thing required
 
 ## [Sidecar](components/sidecar.md)
 
-Thanos integrates with existing Prometheus (v2.2.1+) servers through a [Sidecar process](https://docs.microsoft.com/en-us/azure/architecture/patterns/sidecar#solution), which runs on the same machine or in the same pod as the Prometheus server. 
+Thanos integrates with existing Prometheus (v2.2.1+) servers through a [Sidecar process](https://docs.microsoft.com/en-us/azure/architecture/patterns/sidecar#solution), which runs on the same machine or in the same pod as the Prometheus server.
 
 The purpose of the Sidecar is to backup Prometheus data into an Object Storage bucket, and giving other Thanos components access to the Prometheus instance the Sidecar is attached to. [More details about the Sidecar's functions are available at the sidecar documentation page](components/sidecar.md).
 
@@ -90,7 +113,7 @@ The Query component is stateless and horizontally scalable and can be deployed w
 
 Query also implements Prometheus's offical HTTP API and can thus be used with external tools such as Grafana. It also serves a derivative of Prometheus's UI for ad-hoc querying.
 
-Below, we will set up a Query to connect to our Sidecars, and expose its HTTP UI. 
+Below, we will set up a Query to connect to our Sidecars, and expose its HTTP UI.
 
 ```
 thanos query \
