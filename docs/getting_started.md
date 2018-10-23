@@ -8,70 +8,98 @@ for gradual roll outs in more complex environments.
 
 Thanos has the following components:
 
-```
-sidecar    - sidecar for Prometheus server: entrypoint for querying data and uploading blocks
-             to a block storage (s3, gcs).
-store      - store node giving access to blocks in a bucket provider.
-query      - query node exposing PromQL enabled Query API with data retrieved from multiple
-             store or sidecar nodes.
-rule       - ruler evaluating Prometheus rules against given query nodes.
-compact    - a component to continuously compacts blocks in an object store bucket.
-bucket     - a component to manually handle and fix storage issues.
-downsample - a component to continuously downsample blocks in an object store bucket,
-             allowing for longer retention periods without losing query performance.
-```
+- `sidecar`    - sidecar for Prometheus server: entrypoint for querying data and uploading blocks
+                 to a block storage (s3, gcs).
+- `store`      - store node giving access to blocks in a bucket provider.
+- `query`      - query node exposing PromQL enabled Query API with data retrieved from multiple
+                 store or sidecar nodes.
+- `rule`       - ruler evaluating Prometheus rules against given query nodes.
+- `compact`    - a component to continuously compacts blocks in an object store bucket.
+- `bucket`     - a component to manually handle and fix storage issues.
+- `downsample` - a component to continuously downsample blocks in an object store bucket,
+                 allowing for longer retention periods without losing query performance.
 
 These components can be set up with different levels of complexities:
 
-1. [Basic Setup](#basic-setup) - allows you to query against multiple Prometheus, without long term retention.
-2. [Long term retention](#long-term-retention) - allows you the same as the basic setup, but introduces block storage to increase your retention arbitrately.
-3. [Alerting](#alerting) - allows you to alert against data from multiple Prometheus.
+1. [Basic High Availability Setup](#basic-high-availability-setup) - allows you to query against multiple
+   Prometheus achieving high availability, without long term retention.
+2. [Long term retention](#long-term-retention) - allows you the same as the
+   basic setup, but introduces block storage to increase your retention
+   arbitrately.
+3. [Alerting](#alerting) - allows you to alert against data from multiple
+   Prometheus.
 
-## Basic Setup
+_This is a usage tutorial, for contributing and building, see
+[CONTRIBUTING](CONTRIBUTING.md)_
 
-Requirements: a
+## Basic High Availability Setup
 
-On the basic setup we'll configure Thanos query to query against two Prometheus.
+This basic setup assumes a Docker environment and provides manifests in case
+you're working with Kubernetes. You'll learn how to deploy Thanos alongside
+Prometheus, and query two Prometheus replicas that have the same data,
+achieving a basic high availability setup for Prometheus.
+
+Prometheus is a monitoring tool that collects metrics, allows querying
+historical data and alerting. Prometheus TSDB storage model doesn't offer high
+availability in itself, instead, the semantics for achieving high availability
+is to deploy two instances of Prometheus that scrape the same targets and have
+virtually the same data, so if one goes down, the other can still be queried.
+
+This adds complexity to the setup: if one of the prometheus starts scraping
+later than the other, one will have more data than the other; Scrapings are not
+aligned between instances, so data is effectivelly different, making it
+difficult to put a load balancer in front of both Prometheus for querying.
+
+Thanos allows you to query both Prometheus without worrying about these issues.
+It will deduplicate data across both instances showing you a single graph that
+is closer to the reality. At the same time, if one of the Prometheus is down
+for some time, Thanos will fill the datapoint gaps that were left due to this
+unavailability with the other Prometheus's data, making the failure
+transparent to the user.
+
+### 1. Installing the Sidecar
+
+> A sidecar is a component deployed alongside another application to provide
+> extra functionality such as log forwarding, monitoring, configuration or
+> networking. This pattern alows for better isolation and encapsulation of this
+> extra fuctionality. [Read more about sidecars](https://docs.microsoft.com/en-us/azure/architecture/patterns/sidecar)
+
+Thanos needs direct access to the Prometheus instances we want to query. Thanos
+Sidecar is responsible for this access and needs read access to Prometheus TDSB
+storage. The Sidecar has two responsibilities:
+
+- The Sidecar is an entrypoint for Thanos Query to query against the Prometheus
+  (v2.2.1+) instance.
+- The Sidecar is responsible for uploading blocks to S3 or compatible storage,
+  allowing for long term retention. (This will be covered in level 2, [Long
+  term retention](#long-term-retention)
+
+#### Kubernetes
+
+If in Kubernetes, run Thanos Docker image alongside Prometheus in the same pod:
+
+[See this manifest to deploy the sidecar alongside Prometheus in Kubernetes]()
 
 
-## Get Thanos!
+#### Other Deploy methods
 
-You can find the latest Thanos release [here](https://github.com/improbable-eng/thanos/releases).
+If using systemd, docker swarm, or other, make sure you start thanos sidecar
+in the same machine and has read access to Prometheus's volume.
 
-If you want to build Thanos from source -
-with a working installation of the Go [toolchain](https://github.com/golang/tools) (`GOPATH`, `PATH=${GOPATH}/bin:${PATH}`), Thanos can be downloaded and built by running:
 
-```
-go get -d github.com/improbable-eng/thanos/...
-cd ${GOPATH}/src/github.com/improbable-eng/thanos
-make
-```
 
-The `thanos` binary should now be in your `$PATH` and is the only thing required to deploy any of its components.
 
-## [Sidecar](components/sidecar.md)
 
-Thanos integrates with existing Prometheus (v2.2.1+) servers through a [Sidecar process](https://docs.microsoft.com/en-us/azure/architecture/patterns/sidecar#solution), which runs on the same machine or in the same pod as the Prometheus server.
 
-The purpose of the Sidecar is to backup Prometheus data into an Object Storage bucket, and giving other Thanos components access to the Prometheus instance the Sidecar is attached to. [More details about the Sidecar's functions are available at the sidecar documentation page](components/sidecar.md).
 
-### Backups
 
-The following configures the Sidecar to only backup Prometheus data into a Google Cloud Storage bucket.
 
-```
-thanos sidecar \
-    --tsdb.path         /var/prometheus \           # Data directory of Prometheus
-    --gcs.bucket        example-bucket \            # Bucket to upload data to
-```
 
-Rolling this out has little to zero impact on the running Prometheus instance. It is a good start to ensure you are backing up your data while figuring out the other pieces of Thanos.
 
-If you are not interested in backing up any data, the `--gcs.bucket` flag can simply be omitted.
 
-* _[Example Kubernetes manifest](../kube/manifests/prometheus.yaml)_
-* _[Example Kubernetes manifest with GCS upload](../kube/manifests/prometheus-gcs.yaml)_
-* _[Details & Config for other object stores](./storage.md)_
+
+
+
 
 ### [Store API](components/store.md)
 
